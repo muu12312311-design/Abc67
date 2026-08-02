@@ -1,0 +1,125 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+-- ================================================================
+-- 1. ระบบสร้าง GUI เมนู เปิด-ปิด (สร้าง UI ให้อัตโนมัติ)
+-- ================================================================
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- สร้าง ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "GameSystemGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- สร้างปุ่ม Toggle (มุมซ้ายบน)
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ToggleButton"
+toggleBtn.Size = UDim2.new(0, 120, 0, 40)
+toggleBtn.Position = UDim2.new(0, 20, 0, 20)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Text = "เปิด/ปิด เมนู"
+toggleBtn.TextSize = 16
+toggleBtn.Parent = screenGui
+
+-- สร้างหน้าต่าง เมนู (Main Frame)
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 250, 0, 150)
+mainFrame.Position = UDim2.new(0, 20, 0, 70)
+mainFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+mainFrame.Visible = false -- ซ่อนไว้เริ่มต้น
+mainFrame.Parent = screenGui
+
+local frameTitle = Instance.new("TextLabel")
+frameTitle.Size = UDim2.new(1, 0, 0, 30)
+frameTitle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frameTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+frameTitle.Text = "เมนูควบคุมระบบ"
+frameTitle.TextSize = 14
+frameTitle.Parent = mainFrame
+
+-- สวิตช์ปุ่มกด เปิด-ปิด หน้าต่างเมนู
+toggleBtn.MouseButton1Click:Connect(function()
+	mainFrame.Visible = not mainFrame.Visible
+end)
+
+
+-- ================================================================
+-- 2. ระบบสแกนเรืองแสงมองเห็นอาวุธบนพื้น (Item Highlight)
+-- ================================================================
+local function applyHighlightToWeapons()
+	for _, item in pairs(Workspace:GetDescendants()) do
+		-- หาวัตถุที่เป็น Tool ที่วางบนพื้น (ไม่รวมที่ผู้เล่นถืออยู่)
+		if item:IsA("Tool") and not item:IsDescendantOf(player.Character) then
+			if not item:FindFirstChild("WeaponHighlight") then
+				local highlight = Instance.new("Highlight")
+				highlight.Name = "WeaponHighlight"
+				highlight.FillColor = Color3.fromRGB(0, 255, 255) -- สีฟ้าเรืองแสง
+				highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+				highlight.FillTransparency = 0.5
+				highlight.OutlineTransparency = 0
+				highlight.Parent = item
+			end
+		end
+	end
+end
+
+-- ลูปสแกนหาอาวุธใหม่ทุกๆ 3 วินาที
+task.spawn(function()
+	while true do
+		applyHighlightToWeapons()
+		task.wait(3)
+	end
+end)
+
+
+-- ================================================================
+-- 3. ระบบยิงด้วย Raycast ตรวจจับโดนหัว (Headshot System)
+-- ================================================================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	
+	-- เมื่อผู้เล่นคลิกซ้าย
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		local character = player.Character
+		if not character or not character:FindFirstChild("Head") then return end
+		
+		local origin = character.Head.Position
+		local targetPos = mouse.Hit.Position
+		local direction = (targetPos - origin).Unit * 500 -- ระยะคำนวณ Raycast
+		
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+		raycastParams.FilterDescendantsInstances = {character} -- เว้นตัวผู้เล่นเอง
+		
+		local result = Workspace:Raycast(origin, direction, raycastParams)
+		
+		if result and result.Instance then
+			local hitPart = result.Instance
+			local hitChar = hitPart.Parent
+			local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
+			
+			-- กรณีชิ้นส่วนซ้อนอยู่ใน Model ย่อย
+			if not humanoid and hitChar.Parent then
+				hitChar = hitChar.Parent
+				humanoid = hitChar:FindFirstChildOfClass("Humanoid")
+			end
+			
+			-- ตรวจจับการยิงโดนเป้าหมาย
+			if humanoid and hitChar.Name ~= player.Name then
+				if hitPart.Name == "Head" then
+					print("ยิงเข้าหัว! (Headshot Detect): " .. hitChar.Name)
+					-- ตรงนี้สามารถใส่ระบบ Effect เสียง หรือ Damage เพิ่มเติมได้
+				else
+					print("ยิงโดนตัว: " .. hitChar.Name)
+				end
+			end
+		end
+	end
+end)
